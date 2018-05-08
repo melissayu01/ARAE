@@ -1,0 +1,21 @@
+{'data_path': '../../data/snli', 'kenlm_path': '../../kenlm', 'outf': 'example', 'vocab_size': 11000, 'maxlen': 30, 'lowercase': False, 'emsize': 300, 'nhidden': 300, 'nlayers': 1, 'noise_radius': 0.2, 'noise_anneal': 0.995, 'hidden_init': False, 'arch_g': '300-300', 'arch_d': '300-300', 'z_size': 100, 'temp': 1, 'enc_grad_norm': True, 'gan_toenc': -0.01, 'dropout': 0.0, 'epochs': 15, 'min_epochs': 6, 'no_earlystopping': False, 'patience': 5, 'batch_size': 64, 'niters_ae': 1, 'niters_gan_d': 5, 'niters_gan_g': 1, 'niters_gan_schedule': '2-4-6', 'lr_ae': 1, 'lr_gan_g': 5e-05, 'lr_gan_d': 1e-05, 'beta1': 0.9, 'clip': 1, 'gan_clamp': 0.01, 'sample': False, 'N': 5, 'log_interval': 200, 'seed': 1111, 'cuda': False, 'ntokens': 11004}
+
+Training...
+[1/15][99/11134] Loss_D: 0.00239973 (Loss_D_real: -0.00264960 Loss_D_fake: -0.00024987) Loss_G: -0.00024203
+[1/15][199/11134] Loss_D: 0.00400302 (Loss_D_real: -0.00345946 Loss_D_fake: 0.00054356) Loss_G: 0.00069994
+| epoch   1 |   200/11134 batches | ms/batch 2167.87 | loss  5.72 | ppl   304.53 | acc     0.29
+[1/15][299/11134] Loss_D: 0.00442084 (Loss_D_real: -0.00368061 Loss_D_fake: 0.00074023) Loss_G: 0.00072402
+[1/15][399/11134] Loss_D: 0.00479733 (Loss_D_real: -0.00287889 Loss_D_fake: 0.00191845) Loss_G: 0.00191598
+| epoch   1 |   400/11134 batches | ms/batch 2378.17 | loss  4.75 | ppl   116.05 | acc     0.32
+[1/15][499/11134] Loss_D: 0.00515553 (Loss_D_real: -0.00381473 Loss_D_fake: 0.00134080) Loss_G: 0.00137955
+[1/15][599/11134] Loss_D: 0.00466020 (Loss_D_real: -0.00405142 Loss_D_fake: 0.00060878) Loss_G: 0.00052524
+| epoch   1 |   600/11134 batches | ms/batch 2149.82 | loss  4.39 | ppl    80.83 | acc     0.29
+[1/15][699/11134] Loss_D: 0.00402099 (Loss_D_real: -0.00354552 Loss_D_fake: 0.00047546) Loss_G: 0.00035971
+[1/15][799/11134] Loss_D: 0.00518475 (Loss_D_real: -0.00355861 Loss_D_fake: 0.00162614) Loss_G: 0.00149397
+| epoch   1 |   800/11134 batches | ms/batch 2330.55 | loss  4.16 | ppl    64.16 | acc     0.38
+[1/15][899/11134] Loss_D: 0.00544903 (Loss_D_real: -0.00402243 Loss_D_fake: 0.00142659) Loss_G: 0.00151268
+[1/15][999/11134] Loss_D: 0.00523261 (Loss_D_real: -0.00426952 Loss_D_fake: 0.00096309) Loss_G: 0.00115979
+| epoch   1 |  1000/11134 batches | ms/batch 3991.54 | loss  3.97 | ppl    53.14 | acc     0.39
+[1/15][1099/11134] Loss_D: 0.00522924 (Loss_D_real: -0.00440353 Loss_D_fake: 0.00082571) Loss_G: 0.00112643
+[1/15][1199/11134] Loss_D: 0.00552950 (Loss_D_real: -0.00476883 Loss_D_fake: 0.00076067) Loss_G: 0.00091231
+| epoch   1 |  1200/11134 batches | ms/batch 4115.51 | loss  3.83 | ppl    45.85 | acc     0.42
