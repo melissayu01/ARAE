@@ -40,7 +40,7 @@ parser.add_argument('--lowercase', action='store_true',
 
 # Evaluation Arguments
 parser.add_argument('--batch_size', type=int, default=32,
-                    help='batc size')
+                    help='batch size')
 parser.add_argument('--lm_path', type=str, default="", #TODO
                     help='language model path')
 parser.add_argument('--ft_path', type=str, default="", #TODO
@@ -124,7 +124,7 @@ def evaluate_transfer(whichdecoder, data_source, epoch):
     # Turn on evaluation mode which disables dropout.
     autoencoder.eval()
     ntokens = len(corpus.dictionary.word2idx)
-    
+
     original = []
     transferred = []
     for i, batch in enumerate(data_source):
@@ -140,11 +140,11 @@ def evaluate_transfer(whichdecoder, data_source, epoch):
             max_indices = autoencoder.generate(2, hidden, maxlen=args.maxlen)
         else:
             max_indices = autoencoder.generate(1, hidden, maxlen=args.maxlen)
-            
+
         for t, idx in zip(target, max_indices):
             t = t.numpy()
             idx = idx.data.cpu().numpy()
-            
+
             words = [corpus.dictionary.idx2word[x] for x in t]
             original.append(truncate(words))
 

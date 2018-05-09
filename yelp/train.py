@@ -236,13 +236,13 @@ if args.cuda:
 ###############################################################################
 
 
-def save_model():
+def save_model(epoch):
     print("Saving models")
-    with open('{}/autoencoder_model.pt'.format(args.outf), 'wb') as f:
+    with open('{}/autoencoder_model_{}.pt'.format(args.outf, epoch), 'wb') as f:
         torch.save(autoencoder.state_dict(), f)
-    with open('{}/gan_gen_model.pt'.format(args.outf), 'wb') as f:
+    with open('{}/gan_gen_model_{}.pt'.format(args.outf, epoch), 'wb') as f:
         torch.save(gan_gen.state_dict(), f)
-    with open('{}/gan_disc_model.pt'.format(args.outf), 'wb') as f:
+    with open('{}/gan_disc_model_{}.pt'.format(args.outf, epoch), 'wb') as f:
         torch.save(gan_disc.state_dict(), f)
 
 
@@ -535,137 +535,143 @@ fixed_noise.data.normal_(0, 1)
 one = to_gpu(args.cuda, torch.FloatTensor([1]))
 mone = one * -1
 
-for epoch in range(1, args.epochs+1):
-    # update gan training schedule
-    if epoch in gan_schedule:
-        niter_gan += 1
-        print("GAN training loop schedule increased to {}".format(niter_gan))
-        with open("{}/logs.txt".format(args.outf), 'a') as f:
-            f.write("GAN training loop schedule increased to {}\n".
-                    format(niter_gan))
-
-    total_loss_ae1 = 0
-    total_loss_ae2 = 0
-    classify_loss = 0
-    epoch_start_time = time.time()
-    start_time = time.time()
-    niter = 0
-    niter_global = 1
-
-    # loop through all batches in training data
-    while niter < len(train1_data) and niter < len(train2_data):
-
-        # train autoencoder ----------------------------
-        for i in range(args.niters_ae):
-            if niter == len(train1_data):
-                break  # end of epoch
-            total_loss_ae1, start_time = \
-                train_ae(1, train1_data[niter], total_loss_ae1, start_time, niter)
-            total_loss_ae2, _ = \
-                train_ae(2, train2_data[niter], total_loss_ae2, start_time, niter)
-
-            # train classifier ----------------------------
-            classify_loss1, classify_acc1 = train_classifier(1, train1_data[niter])
-            classify_loss2, classify_acc2 = train_classifier(2, train2_data[niter])
-            classify_loss = (classify_loss1 + classify_loss2) / 2
-            classify_acc = (classify_acc1 + classify_acc2) / 2
-            # reverse to autoencoder
-            # classifier_regularize(1, train1_data[niter])
-            # classifier_regularize(2, train2_data[niter])
-
-            niter += 1
-
-        # train gan ----------------------------------
-        for k in range(niter_gan):
-
-            # train discriminator/critic
-            for i in range(args.niters_gan_d):
-                # feed a seen sample within this epoch; good for early training
-                if i % 2 == 0:
-                    batch = train1_data[random.randint(0, len(train1_data)-1)]
-                    whichdecoder = 1
-                else:
-                    batch = train2_data[random.randint(0, len(train2_data)-1)]
-                    whichdecoder = 2
-                errD, errD_real, errD_fake = train_gan_d(whichdecoder, batch)
-
-            # train generator
-            for i in range(args.niters_gan_g):
-                errG = train_gan_g()
-
-            # train autoencoder from d
-            for i in range(args.niters_gan_ae):
-                if i % 2 == 0:
-                    batch = train1_data[random.randint(0, len(train1_data)-1)]
-                    whichdecoder = 1
-                else:
-                    batch = train2_data[random.randint(0, len(train2_data)-1)]
-                    whichdecoder = 2
-                errD_ = train_gan_d_into_ae(whichdecoder, batch)
-
-        niter_global += 1
-        if niter_global % 100 == 0:
-            print('[%d/%d][%d/%d] Loss_D: %.4f (Loss_D_real: %.4f '
-                  'Loss_D_fake: %.4f) Loss_G: %.4f'
-                  % (epoch, args.epochs, niter, len(train1_data),
-                     errD.data[0], errD_real.data[0],
-                     errD_fake.data[0], errG.data[0]))
-            print("Classify loss: {:5.2f} | Classify accuracy: {:3.3f}\n".format(
-                    classify_loss, classify_acc))
+try:
+    for epoch in range(1, args.epochs+1):
+        # update gan training schedule
+        if epoch in gan_schedule:
+            niter_gan += 1
+            print("GAN training loop schedule increased to {}".format(niter_gan))
             with open("{}/logs.txt".format(args.outf), 'a') as f:
-                f.write('[%d/%d][%d/%d] Loss_D: %.4f (Loss_D_real: %.4f '
-                        'Loss_D_fake: %.4f) Loss_G: %.4f\n'
-                        % (epoch, args.epochs, niter, len(train1_data),
-                           errD.data[0], errD_real.data[0],
-                           errD_fake.data[0], errG.data[0]))
-                f.write("Classify loss: {:5.2f} | Classify accuracy: {:3.3f}\n".format(
+                f.write("GAN training loop schedule increased to {}\n".
+                        format(niter_gan))
+
+        total_loss_ae1 = 0
+        total_loss_ae2 = 0
+        classify_loss = 0
+        epoch_start_time = time.time()
+        start_time = time.time()
+        niter = 0
+        niter_global = 1
+
+        # loop through all batches in training data
+        while niter < len(train1_data) and niter < len(train2_data):
+
+            # train autoencoder ----------------------------
+            for i in range(args.niters_ae):
+                if niter == len(train1_data):
+                    break  # end of epoch
+                total_loss_ae1, start_time = \
+                    train_ae(1, train1_data[niter], total_loss_ae1, start_time, niter)
+                total_loss_ae2, _ = \
+                    train_ae(2, train2_data[niter], total_loss_ae2, start_time, niter)
+
+                # train classifier ----------------------------
+                classify_loss1, classify_acc1 = train_classifier(1, train1_data[niter])
+                classify_loss2, classify_acc2 = train_classifier(2, train2_data[niter])
+                classify_loss = (classify_loss1 + classify_loss2) / 2
+                classify_acc = (classify_acc1 + classify_acc2) / 2
+                # reverse to autoencoder
+                # classifier_regularize(1, train1_data[niter])
+                # classifier_regularize(2, train2_data[niter])
+
+                niter += 1
+
+            # train gan ----------------------------------
+            for k in range(niter_gan):
+
+                # train discriminator/critic
+                for i in range(args.niters_gan_d):
+                    # feed a seen sample within this epoch; good for early training
+                    if i % 2 == 0:
+                        batch = train1_data[random.randint(0, len(train1_data)-1)]
+                        whichdecoder = 1
+                    else:
+                        batch = train2_data[random.randint(0, len(train2_data)-1)]
+                        whichdecoder = 2
+                    errD, errD_real, errD_fake = train_gan_d(whichdecoder, batch)
+
+                # train generator
+                for i in range(args.niters_gan_g):
+                    errG = train_gan_g()
+
+                # train autoencoder from d
+                for i in range(args.niters_gan_ae):
+                    if i % 2 == 0:
+                        batch = train1_data[random.randint(0, len(train1_data)-1)]
+                        whichdecoder = 1
+                    else:
+                        batch = train2_data[random.randint(0, len(train2_data)-1)]
+                        whichdecoder = 2
+                    errD_ = train_gan_d_into_ae(whichdecoder, batch)
+
+            niter_global += 1
+            if niter_global % 100 == 0:
+                print('[%d/%d][%d/%d] Loss_D: %.4f (Loss_D_real: %.4f '
+                      'Loss_D_fake: %.4f) Loss_G: %.4f'
+                      % (epoch, args.epochs, niter, len(train1_data),
+                         errD.data[0], errD_real.data[0],
+                         errD_fake.data[0], errG.data[0]))
+                print("Classify loss: {:5.2f} | Classify accuracy: {:3.3f}\n".format(
                         classify_loss, classify_acc))
+                with open("{}/logs.txt".format(args.outf), 'a') as f:
+                    f.write('[%d/%d][%d/%d] Loss_D: %.4f (Loss_D_real: %.4f '
+                            'Loss_D_fake: %.4f) Loss_G: %.4f\n'
+                            % (epoch, args.epochs, niter, len(train1_data),
+                               errD.data[0], errD_real.data[0],
+                               errD_fake.data[0], errG.data[0]))
+                    f.write("Classify loss: {:5.2f} | Classify accuracy: {:3.3f}\n".format(
+                            classify_loss, classify_acc))
 
-            # exponentially decaying noise on autoencoder
-            autoencoder.noise_radius = \
-                autoencoder.noise_radius*args.noise_anneal
+                # exponentially decaying noise on autoencoder
+                autoencoder.noise_radius = \
+                    autoencoder.noise_radius*args.noise_anneal
 
 
-    # end of epoch ----------------------------
-    # evaluation
-    test_loss, accuracy = evaluate_autoencoder(1, test1_data[:1000], epoch)
-    print('-' * 89)
-    print('| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} | '
-          'test ppl {:5.2f} | acc {:3.3f}'.
-          format(epoch, (time.time() - epoch_start_time),
-                 test_loss, math.exp(test_loss), accuracy))
-    print('-' * 89)
-    with open("{}/logs.txt".format(args.outf), 'a') as f:
-        f.write('-' * 89)
-        f.write('\n| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} |'
-                ' test ppl {:5.2f} | acc {:3.3f}\n'.
-                format(epoch, (time.time() - epoch_start_time),
-                       test_loss, math.exp(test_loss), accuracy))
-        f.write('-' * 89)
-        f.write('\n')
+        # end of epoch ----------------------------
+        # evaluation
+        test_loss, accuracy = evaluate_autoencoder(1, test1_data[:1000], epoch)
+        print('-' * 89)
+        print('| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} | '
+              'test ppl {:5.2f} | acc {:3.3f}'.
+              format(epoch, (time.time() - epoch_start_time),
+                     test_loss, math.exp(test_loss), accuracy))
+        print('-' * 89)
+        with open("{}/logs.txt".format(args.outf), 'a') as f:
+            f.write('-' * 89)
+            f.write('\n| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} |'
+                    ' test ppl {:5.2f} | acc {:3.3f}\n'.
+                    format(epoch, (time.time() - epoch_start_time),
+                           test_loss, math.exp(test_loss), accuracy))
+            f.write('-' * 89)
+            f.write('\n')
 
-    test_loss, accuracy = evaluate_autoencoder(2, test2_data[:1000], epoch)
-    print('-' * 89)
-    print('| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} | '
-          'test ppl {:5.2f} | acc {:3.3f}'.
-          format(epoch, (time.time() - epoch_start_time),
-                 test_loss, math.exp(test_loss), accuracy))
-    print('-' * 89)
-    with open("{}/logs.txt".format(args.outf), 'a') as f:
-        f.write('-' * 89)
-        f.write('\n| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} |'
-                ' test ppl {:5.2f} | acc {:3.3f}\n'.
-                format(epoch, (time.time() - epoch_start_time),
-                       test_loss, math.exp(test_loss), accuracy))
-        f.write('-' * 89)
-        f.write('\n')
+        test_loss, accuracy = evaluate_autoencoder(2, test2_data[:1000], epoch)
+        print('-' * 89)
+        print('| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} | '
+              'test ppl {:5.2f} | acc {:3.3f}'.
+              format(epoch, (time.time() - epoch_start_time),
+                     test_loss, math.exp(test_loss), accuracy))
+        print('-' * 89)
+        with open("{}/logs.txt".format(args.outf), 'a') as f:
+            f.write('-' * 89)
+            f.write('\n| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} |'
+                    ' test ppl {:5.2f} | acc {:3.3f}\n'.
+                    format(epoch, (time.time() - epoch_start_time),
+                           test_loss, math.exp(test_loss), accuracy))
+            f.write('-' * 89)
+            f.write('\n')
 
-    if args.debug:
-        continue
+        # save model for epoch
+        save_model(epoch)
 
-    # shuffle between epochs
-    train1_data = batchify(corpus.data['train1'], args.batch_size, shuffle=True)
-    train2_data = batchify(corpus.data['train2'], args.batch_size, shuffle=True)
+        if args.debug:
+            continue
+
+        # shuffle between epochs
+        train1_data = batchify(corpus.data['train1'], args.batch_size, shuffle=True)
+        train2_data = batchify(corpus.data['train2'], args.batch_size, shuffle=True)
+except KeyboardInterrupt:
+    print('Ending training...')
 
 
 test_loss, accuracy = evaluate_autoencoder(1, test1_data, epoch+1)
