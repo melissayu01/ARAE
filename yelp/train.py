@@ -360,9 +360,10 @@ def evaluate_autoencoder(whichdecoder, data_source, epoch):
                 # real sentence
                 chars = " ".join([corpus.dictionary.idx2word[x] for x in t])
                 f_from.write(chars)
-                f_from.write("\n")
+                f_from.write("\n\n")
                 # transfer sentence
-                chars = " ".join([corpus.dictionary.idx2word[x] for x in idx2])
+                idx = idx2 if whichdecoder == 1 else idx1
+                chars = " ".join([corpus.dictionary.idx2word[x] for x in idx])
                 f_trans.write(chars)
                 f_trans.write("\n\n")
 
