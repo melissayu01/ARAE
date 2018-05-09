@@ -43,6 +43,7 @@ class MLP_D(nn.Module):
     def forward(self, x):
         for i, layer in enumerate(self.layers):
             x = layer(x)
+        # return loss
         x = torch.mean(x)
         return x
 

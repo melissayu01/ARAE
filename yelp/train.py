@@ -55,6 +55,8 @@ parser.add_argument('--arch_d', type=str, default='300-200-100',
                     help='critic/discriminator architecture (MLP)')
 parser.add_argument('--arch_classify', type=str, default='300-200-100',
                     help='classifier architecture')
+parser.add_argument('--arch_latent', type=str, default='300-200-100',
+                    help='latent architecture')
 parser.add_argument('--z_size', type=int, default=64,
                     help='dimension of random noise z to feed into generator')
 parser.add_argument('--temp', type=float, default=1,
@@ -189,7 +191,8 @@ print("Loaded data!")
 ###############################################################################
 
 ntokens = len(corpus.dictionary.word2idx)
-autoencoder = Seq2Seq2Decoder(emsize=args.emsize,
+autoencoder = Seq2Seq2Decoder(arch_latent=args.arch_latent,
+                      emsize=args.emsize,
                       nhidden=args.nhidden,
                       ntokens=ntokens,
                       nlayers=args.nlayers,
@@ -244,6 +247,7 @@ def save_model():
 
 
 def train_classifier(whichclass, batch):
+    ''' [2b] train attribute classifier '''
     classifier.train()
     classifier.zero_grad()
 
@@ -252,7 +256,7 @@ def train_classifier(whichclass, batch):
     labels = to_gpu(args.cuda, Variable(torch.zeros(source.size(0)).fill_(whichclass-1)))
 
     # Train
-    code = autoencoder(0, source, lengths, noise=False, encode_only=True).detach()
+    code = autoencoder(0, source, lengths, noise=False, encode_only=True, base_only=True).detach()
     scores = classifier(code)
     classify_loss = F.binary_cross_entropy(scores.squeeze(1), labels)
     classify_loss.backward()
@@ -267,11 +271,12 @@ def train_classifier(whichclass, batch):
 
 def grad_hook(grad):
     global g_factor
-    newgrad = grad * Variable(g_factor.cuda())
+    newgrad = grad * to_gpu(args.cuda, Variable(g_factor))
     return newgrad
 
 
 def classifier_regularize(whichclass, batch):
+    ''' [3b] adversarially train encoder to classifier'''
     autoencoder.train()
     autoencoder.zero_grad()
 
@@ -324,7 +329,7 @@ def evaluate_autoencoder(whichdecoder, data_source, epoch):
             max_vals1, max_indices1 = torch.max(masked_output, 1)
             all_accuracies += \
                 torch.mean(max_indices1.eq(masked_target).float()).data[0]
-        
+
             max_values1, max_indices1 = torch.max(output, 2)
             max_indices2 = autoencoder.generate(2, hidden, maxlen=50)
         else:
@@ -339,7 +344,7 @@ def evaluate_autoencoder(whichdecoder, data_source, epoch):
 
             max_values2, max_indices2 = torch.max(output, 2)
             max_indices1 = autoencoder.generate(1, hidden, maxlen=50)
-        
+
         total_loss += criterion_ce(masked_output/args.temp, masked_target).data
         bcnt += 1
 
@@ -364,6 +369,7 @@ def evaluate_autoencoder(whichdecoder, data_source, epoch):
     return total_loss[0] / len(data_source), all_accuracies/bcnt
 
 def train_ae(whichdecoder, batch, total_loss_ae, start_time, i):
+    ''' [1] train encoder/decoder for reconstruction '''
     autoencoder.train()
     autoencoder.zero_grad()
 
@@ -423,6 +429,7 @@ def train_ae(whichdecoder, batch, total_loss_ae, start_time, i):
 
 
 def train_gan_g():
+    ''' [3] adversarially train generator to discriminator '''
     gan_gen.train()
     gan_gen.zero_grad()
 
@@ -441,6 +448,7 @@ def train_gan_g():
 
 
 def train_gan_d(whichdecoder, batch):
+    ''' [2] train critic '''
     # clamp parameters to a cube
     for p in gan_disc.parameters():
         p.data.clamp_(-args.gan_clamp, args.gan_clamp)
@@ -479,6 +487,7 @@ def train_gan_d(whichdecoder, batch):
 
 
 def train_gan_d_into_ae(whichdecoder, batch):
+    ''' [3] adversarially train encoder to discriminator'''
     # clamp parameters to a cube
     for p in gan_disc.parameters():
         p.data.clamp_(-args.gan_clamp, args.gan_clamp)
@@ -554,15 +563,15 @@ for epoch in range(1, args.epochs+1):
                 train_ae(1, train1_data[niter], total_loss_ae1, start_time, niter)
             total_loss_ae2, _ = \
                 train_ae(2, train2_data[niter], total_loss_ae2, start_time, niter)
-            
+
             # train classifier ----------------------------
             classify_loss1, classify_acc1 = train_classifier(1, train1_data[niter])
             classify_loss2, classify_acc2 = train_classifier(2, train2_data[niter])
             classify_loss = (classify_loss1 + classify_loss2) / 2
             classify_acc = (classify_acc1 + classify_acc2) / 2
             # reverse to autoencoder
-            classifier_regularize(1, train1_data[niter])
-            classifier_regularize(2, train2_data[niter])
+            # classifier_regularize(1, train1_data[niter])
+            # classifier_regularize(2, train2_data[niter])
 
             niter += 1
 
@@ -634,7 +643,7 @@ for epoch in range(1, args.epochs+1):
                        test_loss, math.exp(test_loss), accuracy))
         f.write('-' * 89)
         f.write('\n')
-    
+
     test_loss, accuracy = evaluate_autoencoder(2, test2_data[:1000], epoch)
     print('-' * 89)
     print('| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} | '
@@ -657,8 +666,8 @@ for epoch in range(1, args.epochs+1):
     # shuffle between epochs
     train1_data = batchify(corpus.data['train1'], args.batch_size, shuffle=True)
     train2_data = batchify(corpus.data['train2'], args.batch_size, shuffle=True)
-    
-    
+
+
 test_loss, accuracy = evaluate_autoencoder(1, test1_data, epoch+1)
 print('-' * 89)
 print('| end of epoch {:3d} | time: {:5.2f}s | test loss {:5.2f} | '

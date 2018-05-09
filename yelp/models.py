@@ -10,6 +10,51 @@ import os
 import numpy as np
 
 
+class MLP_Latent(nn.Module):
+    def __init__(self, ninput, noutput, layers,
+                 activation=nn.ReLU(), gpu=False):
+        super(MLP_Latent, self).__init__()
+        self.ninput = ninput
+        self.noutput = noutput
+
+        layer_sizes = [ninput] + [int(x) for x in layers.split('-')]
+        self.layers = []
+
+        for i in range(len(layer_sizes)-1):
+            layer = nn.Linear(layer_sizes[i], layer_sizes[i+1])
+            self.layers.append(layer)
+            self.add_module("layer"+str(i+1), layer)
+
+            # No batch normalization in first layer
+            if i != 0:
+                bn = nn.BatchNorm1d(layer_sizes[i+1])
+                self.layers.append(bn)
+                self.add_module("bn"+str(i+1), bn)
+
+            self.layers.append(activation)
+            self.add_module("activation"+str(i+1), activation)
+
+        layer = nn.Linear(layer_sizes[-1], noutput)
+        self.layers.append(layer)
+        self.add_module("layer"+str(len(self.layers)), layer)
+
+        self.init_weights()
+
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+        return x
+
+    def init_weights(self):
+        init_std = 0.02
+        for layer in self.layers:
+            try:
+                layer.weight.data.normal_(0, init_std)
+                layer.bias.data.fill_(0)
+            except:
+                pass
+
+
 class MLP_Classify(nn.Module):
     def __init__(self, ninput, noutput, layers,
                  activation=nn.ReLU(), gpu=False):
@@ -57,7 +102,7 @@ class MLP_Classify(nn.Module):
 
 
 class Seq2Seq2Decoder(nn.Module):
-    def __init__(self, emsize, nhidden, ntokens, nlayers, noise_radius=0.2,
+    def __init__(self, emsize, nhidden, ntokens, nlayers, arch_latent, noise_radius=0.2,
                  share_decoder_emb=False, hidden_init=False, dropout=0, gpu=False):
         super(Seq2Seq2Decoder, self).__init__()
         self.nhidden = nhidden
@@ -82,6 +127,7 @@ class Seq2Seq2Decoder(nn.Module):
                                num_layers=nlayers,
                                dropout=dropout,
                                batch_first=True)
+        self.latent_encoder = MLP_Latent(ninput=nhidden, noutput=nhidden, layers=arch_latent) # already weight init'ed
 
         decoder_input_size = emsize+nhidden
         self.decoder1 = nn.LSTM(input_size=decoder_input_size,
@@ -137,7 +183,7 @@ class Seq2Seq2Decoder(nn.Module):
         self.grad_norm = norm.detach().data.mean()
         return grad
 
-    def forward(self, whichdecoder, indices, lengths, noise=False, encode_only=False):
+    def forward(self, whichdecoder, indices, lengths, noise=False, encode_only=False, base_only=False):
         batch_size, maxlen = indices.size()
 
         hidden = self.encode(indices, lengths, noise)
@@ -145,10 +191,12 @@ class Seq2Seq2Decoder(nn.Module):
         if hidden.requires_grad:
             hidden.register_hook(self.store_grad_norm)
 
-        if encode_only:
-            return hidden
+        latent = self.latent_encoder(hidden)
 
-        decoded = self.decode(whichdecoder, hidden, batch_size, maxlen,
+        if encode_only:
+            return hidden if base_only else latent
+
+        decoded = self.decode(whichdecoder, latent, batch_size, maxlen,
                               indices=indices, lengths=lengths)
 
         return decoded
@@ -168,11 +216,11 @@ class Seq2Seq2Decoder(nn.Module):
 
         # normalize to unit ball (l2 norm of 1) - p=2, dim=1
         norms = torch.norm(hidden, 2, 1)
-        
+
         # For older versions of PyTorch use:
-        hidden = torch.div(hidden, norms.unsqueeze(1).expand_as(hidden))
-        # For newest version of PyTorch (as of 8/25) use this:
         # hidden = torch.div(hidden, norms.unsqueeze(1).expand_as(hidden))
+        # For newest version of PyTorch (as of 8/25) use this:
+        hidden = torch.div(hidden, norms.unsqueeze(1).expand_as(hidden))
 
         if noise and self.noise_radius > 0:
             gauss_noise = torch.normal(means=torch.zeros(hidden.size()),
@@ -182,7 +230,7 @@ class Seq2Seq2Decoder(nn.Module):
         return hidden
 
     def decode(self, whichdecoder, hidden, batch_size, maxlen, indices=None, lengths=None):
-        # batch x hidden
+        # batch x maxlen x hidden
         all_hidden = hidden.unsqueeze(1).repeat(1, maxlen, 1)
 
         if self.hidden_init:
@@ -244,7 +292,7 @@ class Seq2Seq2Decoder(nn.Module):
             else:
                 output, state = self.decoder2(inputs, state)
             overvocab = self.linear(output.squeeze(1))
-            
+
             if not sample:
                 vals, indices = torch.max(overvocab, 1)
                 indices = indices.unsqueeze(1)
@@ -456,7 +504,7 @@ class Seq2Seq(nn.Module):
 
         # normalize to unit ball (l2 norm of 1) - p=2, dim=1
         norms = torch.norm(hidden, 2, 1)
-        
+
         # For older versions of PyTorch use:
         hidden = torch.div(hidden, norms.expand_as(hidden))
         # For newest version of PyTorch (as of 8/25) use this:
