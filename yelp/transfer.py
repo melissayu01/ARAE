@@ -185,10 +185,10 @@ ppl = get_ppl(model, transfer1+transfer2)
 print("Perplexity: {}".format(ppl))
 
 # BLEU
-BLEU_CMD = "/home/kz918/ARAE-dev/yelp/tool/multi-bleu.perl -lc {} < {}".format(original_file, transfer_file)
+BLEU_CMD = "./tool/multi-bleu.perl -lc {} < {}".format(original_file, transfer_file)
 
 # FastText
-FT_CMD = "cd /home/kz918/fastText; ./fasttext test {} {} 1".format(args.ft_path, ft_file)
+FT_CMD = "cd ~/fastText-0.1.0; ./fasttext test {} {} 1".format(args.ft_path, ft_file)
 
 print("\nFast Text")
 result = subprocess.check_output(FT_CMD, shell=True)
