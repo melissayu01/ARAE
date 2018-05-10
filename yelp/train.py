@@ -366,12 +366,13 @@ def train_lm(save_path):
     indices = []
     for whichdecoder in (1, 2):
         test_data = test1_data if whichdecoder == 1 else test2_data
-        for i in range(1000 // eval_batch_size):
-            _, target, _ = test_data[i]
+        for i, batch in enumerate(test_data):
+            if i > 5000: break
+            _, target, _ = batch
             target = target.view(eval_batch_size, -1).cpu().numpy()
             indices.extend(list(target))
-    indices = np.vstack(indices)
-    np.random.shuffle(indices)
+    # indices = np.vstack(indices)
+    # np.random.shuffle(indices)
 
     # write sampled sentences to text file
     with open(save_path+".txt", "w") as f:
@@ -675,7 +676,8 @@ one = to_gpu(args.cuda, torch.FloatTensor([1]))
 mone = one * -1
 
 # train LM to validation set
-train_lm('./{}/lm_samples'.format(args.outf))
+# train_lm('./{}/lm_samples'.format(args.outf))
+# sys.exit()
 
 best_ppl = None
 impatience = 0
@@ -771,22 +773,22 @@ try:
                 autoencoder.noise_radius = \
                     autoencoder.noise_radius*args.noise_anneal
 
-                if niter_global % 3000 == 0:
-                    evaluate_generator(fixed_noise, "epoch{}_step{}".format(epoch, niter_global))
+                # if niter_global % 3000 == 0:
+                #     evaluate_generator(fixed_noise, "epoch{}_step{}".format(epoch, niter_global))
 
-                    # evaluate with lm
-                    if not args.no_earlystopping and epoch > args.min_epochs:
-                        ppl = train_reverse_lm(
-                            eval_path='./{}/lm_samples.txt'.format(args.outf),
-                            save_path="./{}/epoch{}_step{}_lm_generations".format(
-                                args.outf, epoch, niter_global))
-                        print("Perplexity {}".format(ppl))
-                        all_ppl.append(ppl)
-                        print(all_ppl)
-                        with open("./{}/logs.txt".
-                                  format(args.outf), 'a') as f:
-                            f.write("\n\nPerplexity {}\n".format(ppl))
-                            f.write(str(all_ppl)+"\n\n")
+                #     # evaluate with lm
+                #     if not args.no_earlystopping and epoch > args.min_epochs:
+                #         ppl = train_reverse_lm(
+                #             eval_path='./{}/lm_samples.txt'.format(args.outf),
+                #             save_path="./{}/epoch{}_step{}_lm_generations".format(
+                #                 args.outf, epoch, niter_global))
+                #         print("Perplexity {}".format(ppl))
+                #         all_ppl.append(ppl)
+                #         print(all_ppl)
+                #         with open("./{}/logs.txt".
+                #                   format(args.outf), 'a') as f:
+                #             f.write("\n\nPerplexity {}\n".format(ppl))
+                #             f.write(str(all_ppl)+"\n\n")
 
 
         # end of epoch ----------------------------
