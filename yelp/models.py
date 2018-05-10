@@ -593,14 +593,20 @@ def load_models(load_path, epoch, twodecoders=False):
                               nhidden=model_args['nhidden'],
                               ntokens=model_args['ntokens'],
                               nlayers=model_args['nlayers'],
-                              hidden_init=model_args['hidden_init'])
+                              noise_radius=model_args['noise_radius'],
+                              hidden_init=model_args['hidden_init'],
+                              dropout=model_args['dropout'],
+                              gpu=model_args['cuda'])
     else:
         autoencoder = Seq2Seq2Decoder(arch_latent=model_args['arch_latent'],
                               emsize=model_args['emsize'],
                               nhidden=model_args['nhidden'],
                               ntokens=model_args['ntokens'],
                               nlayers=model_args['nlayers'],
-                              hidden_init=model_args['hidden_init'])
+                              noise_radius=model_args['noise_radius'],
+                              hidden_init=model_args['hidden_init'],
+                              dropout=model_args['dropout'],
+                              gpu=model_args['cuda'])
 
     gan_gen = MLP_G(ninput=model_args['z_size'],
                     noutput=model_args['nhidden'],
