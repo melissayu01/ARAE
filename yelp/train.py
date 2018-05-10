@@ -13,7 +13,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 
-from utils import to_gpu, Corpus, batchify
+from utils import to_gpu, Corpus, batchify, train_ngram_lm, get_ppl
 from models import Seq2Seq2Decoder, Seq2Seq, MLP_D, MLP_G, MLP_Classify
 import shutil
 
@@ -21,6 +21,8 @@ parser = argparse.ArgumentParser(description='PyTorch ARAE for Yelp transfer')
 # Path Arguments
 parser.add_argument('--data_path', type=str, required=True,
                     help='location of the data corpus')
+parser.add_argument('--kenlm_path', type=str, default='../Data/kenlm',
+                    help='path to kenlm directory')
 parser.add_argument('--outf', type=str, default='example',
                     help='output directory name')
 parser.add_argument('--load_vocab', type=str, default="",
@@ -69,6 +71,13 @@ parser.add_argument('--dropout', type=float, default=0.0,
 # Training Arguments
 parser.add_argument('--epochs', type=int, default=15,
                     help='maximum number of epochs')
+parser.add_argument('--min_epochs', type=int, default=6,
+                    help="minimum number of epochs to train for")
+parser.add_argument('--no_earlystopping', action='store_true',
+                    help="won't use KenLM for early stopping")
+parser.add_argument('--patience', type=int, default=5,
+                    help="number of language model evaluations without ppl "
+                         "improvement to wait before early stopping")
 parser.add_argument('--batch_size', type=int, default=64, metavar='N',
                     help='batch size')
 parser.add_argument('--niters_ae', type=int, default=1,
@@ -102,6 +111,8 @@ parser.add_argument('--lambda_class', type=float, default=1,
 # Evaluation Arguments
 parser.add_argument('--sample', action='store_true',
                     help='sample when decoding for generation')
+parser.add_argument('--N', type=int, default=5,
+                    help='N-gram order for training n-gram language model')
 parser.add_argument('--log_interval', type=int, default=200,
                     help='interval to log autoencoder training results')
 
@@ -246,58 +257,32 @@ def save_model(epoch):
         torch.save(gan_disc.state_dict(), f)
 
 
-def train_classifier(whichclass, batch):
-    ''' [2b] train attribute classifier '''
-    classifier.train()
-    classifier.zero_grad()
+def evaluate_generator(noise, epoch):
+    gan_gen.eval()
+    autoencoder.eval()
 
-    source, target, lengths = batch
-    source = to_gpu(args.cuda, Variable(source))
-    labels = to_gpu(args.cuda, Variable(torch.zeros(source.size(0)).fill_(whichclass-1)))
+    # generate from fixed random noise
+    fake_hidden = gan_gen(noise)
 
-    # Train
-    code = autoencoder(0, source, lengths, noise=False, encode_only=True, base_only=True).detach()
-    scores = classifier(code)
-    classify_loss = F.binary_cross_entropy(scores.squeeze(1), labels)
-    classify_loss.backward()
-    optimizer_classify.step()
-    classify_loss = classify_loss.cpu().data[0]
+    for whichdecoder in (1, 2):
+        max_indices = autoencoder.generate(
+            whichdecoder, hidden=fake_hidden, maxlen=args.maxlen, sample=args.sample)
 
-    pred = scores.data.round().squeeze(1)
-    accuracy = pred.eq(labels.data).float().mean()
-
-    return classify_loss, accuracy
-
-
-def grad_hook(grad):
-    global g_factor
-    newgrad = grad * to_gpu(args.cuda, Variable(g_factor))
-    return newgrad
-
-
-def classifier_regularize(whichclass, batch):
-    ''' [3b] adversarially train encoder to classifier'''
-    autoencoder.train()
-    autoencoder.zero_grad()
-
-    source, target, lengths = batch
-    source = to_gpu(args.cuda, Variable(source))
-    target = to_gpu(args.cuda, Variable(target))
-    flippedclass = abs(2-whichclass)
-    labels = to_gpu(args.cuda, Variable(torch.zeros(source.size(0)).fill_(flippedclass)))
-
-    # Train
-    code = autoencoder(0, source, lengths, noise=False, encode_only=True)
-    global g_factor; g_factor = torch.from_numpy(np.array(lengths)).mul_(args.lambda_class).float().unsqueeze(-1)
-    code.register_hook(grad_hook)
-    scores = classifier(code)
-    classify_reg_loss = F.binary_cross_entropy(scores.squeeze(1), labels)
-    classify_reg_loss.backward()
-
-    torch.nn.utils.clip_grad_norm(autoencoder.parameters(), args.clip)
-    optimizer_ae.step()
-
-    return classify_reg_loss
+        with open("./{}/{}_{}_generated.txt".format(args.outf, epoch, whichdecoder), "w") as f:
+            max_indices = max_indices.data.cpu().numpy()
+            for idx in max_indices:
+                # generated sentence
+                words = [corpus.dictionary.idx2word[x] for x in idx]
+                # truncate sentences to first occurrence of <eos>
+                truncated_sent = []
+                for w in words:
+                    if w != '<eos>':
+                        truncated_sent.append(w)
+                    else:
+                        break
+                chars = " ".join(truncated_sent)
+                f.write(chars)
+                f.write("\n")
 
 
 def evaluate_autoencoder(whichdecoder, data_source, epoch):
@@ -368,6 +353,159 @@ def evaluate_autoencoder(whichdecoder, data_source, epoch):
                 f_trans.write("\n\n")
 
     return total_loss[0] / len(data_source), all_accuracies/bcnt
+
+
+def train_lm(save_path):
+    '''
+    train LM
+    save_path: file name (no extension) for saving
+        generated sentences and ngrams
+    '''
+
+    # get positive and negative examples (targets)
+    indices = []
+    for whichdecoder in (1, 2):
+        test_data = test1_data if whichdecoder == 1 else test2_data
+        for i in range(1000 // eval_batch_size):
+            _, target, _ = test_data[i]
+            target = target.view(eval_batch_size, -1).cpu().numpy()
+            indices.extend(list(target))
+    indices = np.vstack(indices)
+    np.random.shuffle(indices)
+
+    # write sampled sentences to text file
+    with open(save_path+".txt", "w") as f:
+        # laplacian smoothing
+        for word in corpus.dictionary.word2idx.keys():
+            f.write(word+"\n")
+        for idx in indices:
+            # sample sentence
+            words = [corpus.dictionary.idx2word[x] for x in idx]
+            # truncate sentences to first occurrence of <eos>
+            truncated_sent = []
+            for w in words:
+                if w != '<eos>':
+                    truncated_sent.append(w)
+                else:
+                    break
+            chars = " ".join(truncated_sent)
+            f.write(chars+"\n")
+
+    # train language model on examples
+    train_ngram_lm(kenlm_path=args.kenlm_path,
+                   data_path=save_path+".txt",
+                   output_path=save_path,
+                   N=args.N)
+
+
+def train_reverse_lm(eval_path, save_path):
+    '''
+    train reverse LM and calculate reverse perplexity
+    eval_path: path to file containing test sentences
+    save_path: file name (no extension) for saving
+        generated sentences and ngrams
+    '''
+
+    # generate positive and negative examples
+    indices = []
+    noise = to_gpu(args.cuda, Variable(torch.ones(eval_batch_size, args.z_size)))
+    for i in range(1000 // eval_batch_size):
+        noise.data.normal_(0, 1)
+
+        fake_hidden = gan_gen(noise)
+        whichdecoder = int(i % 2 == 0) + 1
+        max_indices = autoencoder.generate(
+            whichdecoder, hidden=fake_hidden, maxlen=args.maxlen)
+        indices.append(max_indices.data.cpu().numpy())
+
+    indices = np.concatenate(indices, axis=0)
+
+    # write generated sentences to text file
+    with open(save_path+".txt", "w") as f:
+        # laplacian smoothing
+        for word in corpus.dictionary.word2idx.keys():
+            f.write(word+"\n")
+        for idx in indices:
+            # generated sentence
+            words = [corpus.dictionary.idx2word[x] for x in idx]
+            # truncate sentences to first occurrence of <eos>
+            truncated_sent = []
+            for w in words:
+                if w != '<eos>':
+                    truncated_sent.append(w)
+                else:
+                    break
+            chars = " ".join(truncated_sent)
+            f.write(chars+"\n")
+
+    # train language model on generated examples
+    lm = train_ngram_lm(kenlm_path=args.kenlm_path,
+                        data_path=save_path+".txt",
+                        output_path=save_path,
+                        N=args.N)
+
+    # load sentences to evaluate on
+    with open(eval_path, 'r') as f:
+        lines = f.readlines()
+    sentences = [l.replace('\n', '') for l in lines]
+    ppl = get_ppl(lm, sentences)
+
+    return ppl
+
+
+def train_classifier(whichclass, batch):
+    ''' [2b] train attribute classifier '''
+    classifier.train()
+    classifier.zero_grad()
+
+    source, target, lengths = batch
+    source = to_gpu(args.cuda, Variable(source))
+    labels = to_gpu(args.cuda, Variable(torch.zeros(source.size(0)).fill_(whichclass-1)))
+
+    # Train
+    code = autoencoder(0, source, lengths, noise=False, encode_only=True, base_only=True).detach()
+    scores = classifier(code)
+    classify_loss = F.binary_cross_entropy(scores.squeeze(1), labels)
+    classify_loss.backward()
+    optimizer_classify.step()
+    classify_loss = classify_loss.cpu().data[0]
+
+    pred = scores.data.round().squeeze(1)
+    accuracy = pred.eq(labels.data).float().mean()
+
+    return classify_loss, accuracy
+
+
+def grad_hook(grad):
+    global g_factor
+    newgrad = grad * to_gpu(args.cuda, Variable(g_factor))
+    return newgrad
+
+
+def classifier_regularize(whichclass, batch):
+    ''' [3b] adversarially train encoder to classifier'''
+    autoencoder.train()
+    autoencoder.zero_grad()
+
+    source, target, lengths = batch
+    source = to_gpu(args.cuda, Variable(source))
+    target = to_gpu(args.cuda, Variable(target))
+    flippedclass = abs(2-whichclass)
+    labels = to_gpu(args.cuda, Variable(torch.zeros(source.size(0)).fill_(flippedclass)))
+
+    # Train
+    code = autoencoder(0, source, lengths, noise=False, encode_only=True)
+    global g_factor; g_factor = torch.from_numpy(np.array(lengths)).mul_(args.lambda_class).float().unsqueeze(-1)
+    code.register_hook(grad_hook)
+    scores = classifier(code)
+    classify_reg_loss = F.binary_cross_entropy(scores.squeeze(1), labels)
+    classify_reg_loss.backward()
+
+    torch.nn.utils.clip_grad_norm(autoencoder.parameters(), args.clip)
+    optimizer_ae.step()
+
+    return classify_reg_loss
+
 
 def train_ae(whichdecoder, batch, total_loss_ae, start_time, i):
     ''' [1] train encoder/decoder for reconstruction '''
@@ -536,6 +674,12 @@ fixed_noise.data.normal_(0, 1)
 one = to_gpu(args.cuda, torch.FloatTensor([1]))
 mone = one * -1
 
+# train LM to validation set
+train_lm('./{}/lm_samples'.format(args.outf))
+
+best_ppl = None
+impatience = 0
+all_ppl = []
 try:
     for epoch in range(1, args.epochs+1):
         # update gan training schedule
@@ -626,6 +770,23 @@ try:
                 # exponentially decaying noise on autoencoder
                 autoencoder.noise_radius = \
                     autoencoder.noise_radius*args.noise_anneal
+
+                if niter_global % 3000 == 0:
+                    evaluate_generator(fixed_noise, "epoch{}_step{}".format(epoch, niter_global))
+
+                    # evaluate with lm
+                    if not args.no_earlystopping and epoch > args.min_epochs:
+                        ppl = train_reverse_lm(
+                            eval_path='./{}/lm_samples.txt'.format(args.outf),
+                            save_path="./{}/epoch{}_step{}_lm_generations".format(
+                                args.outf, epoch, niter_global))
+                        print("Perplexity {}".format(ppl))
+                        all_ppl.append(ppl)
+                        print(all_ppl)
+                        with open("./{}/logs.txt".
+                                  format(args.outf), 'a') as f:
+                            f.write("\n\nPerplexity {}\n".format(ppl))
+                            f.write(str(all_ppl)+"\n\n")
 
 
         # end of epoch ----------------------------
