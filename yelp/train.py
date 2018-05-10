@@ -267,6 +267,8 @@ def save_model(epoch):
         torch.save(gan_gen.state_dict(), f)
     with open('{}/gan_disc_model_{}.pt'.format(args.outf, epoch), 'wb') as f:
         torch.save(gan_disc.state_dict(), f)
+    with open('{}/classifier_model_{}.pt'.format(args.outf, epoch), 'wb') as f:
+        torch.save(classifier.state_dict(), f)
 
 
 def evaluate_generator(noise, epoch):
