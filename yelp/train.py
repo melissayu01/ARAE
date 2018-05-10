@@ -19,6 +19,10 @@ import shutil
 
 parser = argparse.ArgumentParser(description='PyTorch ARAE for Yelp transfer')
 # Path Arguments
+parser.add_argument('--load_path', type=str,
+                    help='location of saved models to load')
+parser.add_argument('--load_epoch', type=int, default=1,
+                    help='epoch to warm start from')
 parser.add_argument('--data_path', type=str, required=True,
                     help='location of the data corpus')
 parser.add_argument('--kenlm_path', type=str, default='../Data/kenlm',
@@ -202,18 +206,26 @@ print("Loaded data!")
 ###############################################################################
 
 ntokens = len(corpus.dictionary.word2idx)
-autoencoder = Seq2Seq2Decoder(arch_latent=args.arch_latent,
-                      emsize=args.emsize,
-                      nhidden=args.nhidden,
-                      ntokens=ntokens,
-                      nlayers=args.nlayers,
-                      noise_radius=args.noise_radius,
-                      hidden_init=args.hidden_init,
-                      dropout=args.dropout,
-                      gpu=args.cuda)
 
-gan_gen = MLP_G(ninput=args.z_size, noutput=args.nhidden, layers=args.arch_g)
-gan_disc = MLP_D(ninput=args.nhidden, noutput=1, layers=args.arch_d)
+if args.load_path:
+    print('Warm starting at {}_{}'.format(args.load_epoch, args.load_path))
+    _model_args, _idx2word, autoencoder, gan_gen, gan_disc = \
+        load_models(args.load_path, args.load_epoch, twodecoders=True)
+
+else:
+    autoencoder = Seq2Seq2Decoder(arch_latent=args.arch_latent,
+                          emsize=args.emsize,
+                          nhidden=args.nhidden,
+                          ntokens=ntokens,
+                          nlayers=args.nlayers,
+                          noise_radius=args.noise_radius,
+                          hidden_init=args.hidden_init,
+                          dropout=args.dropout,
+                          gpu=args.cuda)
+
+    gan_gen = MLP_G(ninput=args.z_size, noutput=args.nhidden, layers=args.arch_g)
+    gan_disc = MLP_D(ninput=args.nhidden, noutput=1, layers=args.arch_d)
+
 classifier = MLP_Classify(ninput=args.nhidden, noutput=1, layers=args.arch_classify)
 g_factor = None
 
@@ -683,7 +695,7 @@ best_ppl = None
 impatience = 0
 all_ppl = []
 try:
-    for epoch in range(1, args.epochs+1):
+    for epoch in range(args.load_epoch, args.epochs+args.load_epoch):
         # update gan training schedule
         if epoch in gan_schedule:
             niter_gan += 1
@@ -773,8 +785,8 @@ try:
                 autoencoder.noise_radius = \
                     autoencoder.noise_radius*args.noise_anneal
 
-                # if niter_global % 3000 == 0:
-                #     evaluate_generator(fixed_noise, "epoch{}_step{}".format(epoch, niter_global))
+                if (niter_global-1) % 3000 == 0:
+                    evaluate_generator(fixed_noise, "epoch{}_step{}".format(epoch, niter_global))
 
                 #     # evaluate with lm
                 #     if not args.no_earlystopping and epoch > args.min_epochs:
