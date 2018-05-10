@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 from utils import to_gpu, Corpus, batchify, train_ngram_lm, get_ppl
-from models import Seq2Seq2Decoder, Seq2Seq, MLP_D, MLP_G, MLP_Classify
+from models import Seq2Seq2Decoder, Seq2Seq, MLP_D, MLP_G, MLP_Classify, load_models
 import shutil
 
 parser = argparse.ArgumentParser(description='PyTorch ARAE for Yelp transfer')
