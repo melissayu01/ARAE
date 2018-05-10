@@ -86,7 +86,7 @@ if not os.path.isdir('{}/eval'.format(args.load_path)):
 datafiles = [(os.path.join(args.data_path, "test1.txt"), "test1", False),
              (os.path.join(args.data_path, "test2.txt"), "test2", True)]
 if args.load_vocab != "":
-    vocabdict = json.load(args.vocab)
+    vocabdict = json.load(args.load_vocab)
 else:
     vocabdict = json.load(open(os.path.join(args.load_path, "vocab.json"), 'r'))
 vocabdict = {k: int(v) for k, v in vocabdict.items()}
@@ -179,7 +179,7 @@ with open(ft_file, 'w') as f:
     for sent in transfer2:
         f.write("__label__1 "+sent+"\n")
 
-# Perplexity
+# Perplexity (NOT reverse ppl)
 model = kenlm.Model(args.lm_path)
 ppl = get_ppl(model, transfer1+transfer2)
 print("Perplexity: {}".format(ppl))

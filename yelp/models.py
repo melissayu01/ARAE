@@ -595,7 +595,8 @@ def load_models(load_path, epoch, twodecoders=False):
                               nlayers=model_args['nlayers'],
                               hidden_init=model_args['hidden_init'])
     else:
-        autoencoder = Seq2Seq2Decoder(emsize=model_args['emsize'],
+        autoencoder = Seq2Seq2Decoder(arch_latent=model_args['arch_latent'],
+                              emsize=model_args['emsize'],
                               nhidden=model_args['nhidden'],
                               ntokens=model_args['ntokens'],
                               nlayers=model_args['nlayers'],
@@ -613,9 +614,9 @@ def load_models(load_path, epoch, twodecoders=False):
     gen_path = os.path.join(load_path, "gan_gen_model_{}.pt".format(epoch))
     disc_path = os.path.join(load_path, "gan_disc_model_{}.pt".format(epoch))
 
-    autoencoder.load_state_dict(torch.load(ae_path))
-    gan_gen.load_state_dict(torch.load(gen_path))
-    gan_disc.load_state_dict(torch.load(disc_path))
+    autoencoder.load_state_dict(torch.load(ae_path, map_location=lambda storage, loc: storage))
+    gan_gen.load_state_dict(torch.load(gen_path, map_location=lambda storage, loc: storage))
+    gan_disc.load_state_dict(torch.load(disc_path, map_location=lambda storage, loc: storage))
     return model_args, idx2word, autoencoder, gan_gen, gan_disc
 
 
