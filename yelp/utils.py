@@ -137,7 +137,7 @@ def batchify(data, bsz, shuffle=False, gpu=False):
     for i in range(nbatch):
         # Pad batches to maximum sequence length in batch
         batch = data[i*bsz:(i+1)*bsz]
-        
+
         # subtract 1 from lengths b/c includes BOTH starts & end symbols
         words = batch
         lengths = [len(x)-1 for x in words]
@@ -193,14 +193,19 @@ def train_ngram_lm(kenlm_path, data_path, output_path, N):
     """
     # create .arpa file of n-grams
     curdir = os.path.abspath(os.path.curdir)
-    
-    command = "bin/lmplz -o "+str(N)+" <"+os.path.join(curdir, data_path) + \
-              " >"+os.path.join(curdir, output_path)
+
+    command = "bin/lmplz --skip_symbols -o "+str(N)+" <"+os.path.join(curdir, data_path) + \
+              " >"+os.path.join(curdir, output_path)+".arpa"
+    os.system("cd "+os.path.join(kenlm_path, 'build')+" && "+command)
+
+    # create binary version of arpa file
+    command = "bin/build_binary "+os.path.join(curdir, output_path)+".arpa " + \
+              os.path.join(curdir, output_path)+".binary"
     os.system("cd "+os.path.join(kenlm_path, 'build')+" && "+command)
 
     load_kenlm()
     # create language model
-    model = kenlm.Model(output_path)
+    model = kenlm.Model(output_path+".arpa")
 
     return model
 
