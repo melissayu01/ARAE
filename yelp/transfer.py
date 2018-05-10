@@ -172,6 +172,13 @@ with open(transfer_file, 'w') as f:
     for sent in transfer2:
         f.write(sent+"\n")
 
+ft_train_file = "{}/eval/sentiment_train_epoch{}.ft".format(args.load_path, args.epoch)
+with open(ft_train_file, 'w') as f:
+    for sent in original1:
+        f.write("__label__1 "+sent+"\n")
+    for sent in original2:
+        f.write("__label__2 "+sent+"\n")
+
 ft_file = "{}/eval/sentiment_epoch{}.ft".format(args.load_path, args.epoch)
 with open(ft_file, 'w') as f:
     for sent in transfer1:
@@ -184,18 +191,20 @@ model = kenlm.Model(args.lm_path)
 ppl = get_ppl(model, transfer1+transfer2)
 print("Perplexity: {}".format(ppl))
 
+curdir = os.getcwd()
+
 # BLEU
-BLEU_CMD = "./tool/multi-bleu.perl -lc {} < {}".format(original_file, transfer_file)
-
-# FastText
-FT_CMD = "cd ~/fastText-0.1.0; ./fasttext test {} {} 1".format(args.ft_path, ft_file)
-
-print("\nFast Text")
-result = subprocess.check_output(FT_CMD, shell=True)
-#os.system(FT_CMD)
-print(result)
-
 print("\nBLEU")
+BLEU_CMD = "perl ./tool/multi-bleu.perl -lc {} < {}".format(original_file, transfer_file)
 result = subprocess.check_output(BLEU_CMD, shell=True)
 #os.system(BLEU_CMD)
+print(result)
+
+
+# FastText
+print("\nFast Text")
+FT_CMD = "cd ~/fastText-0.1.0; ./fasttext supervised -input {} -output {}; ./fasttext test {} {} 1".format(
+    os.path.join(curdir, ft_train_file), args.ft_path, args.ft_path+'.bin', os.path.join(curdir, ft_file))
+result = subprocess.check_output(FT_CMD, shell=True)
+#os.system(FT_CMD)
 print(result)
