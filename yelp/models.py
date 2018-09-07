@@ -605,8 +605,7 @@ def load_models(load_path, epoch, twodecoders=False):
                               nlayers=model_args['nlayers'],
                               noise_radius=model_args['noise_radius'],
                               hidden_init=model_args['hidden_init'],
-                              dropout=model_args['dropout'],
-                              gpu=model_args['cuda'])
+                              dropout=model_args['dropout'])
 
     gan_gen = MLP_G(ninput=model_args['z_size'],
                     noutput=model_args['nhidden'],
